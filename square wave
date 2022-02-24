@@ -1,0 +1,66 @@
+#include <ds3231.h>
+#include <stdio.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+// Compile --std=gnu99 for sigaction.
+
+// 1920 / 10 / 48 = 4 Hz
+#define CLOCK_DIVISOR 10
+#define PWM_RANGE 8
+#define PWM_PIN 18
+// For pins 13 or 19, use channel 1.
+#define PWM_CHANNEL 0
+// For pins 12 or 13, use ALT0.
+#define PWM_ALT ds3231_GPIO_FSEL_ALT5
+
+
+void sigHandler (int sig)
+{
+    fprintf(stderr, "Stopped by signal %d.\n", sig);
+    ds3231_pwm_set_mode(PWM_CHANNEL, 0, 0);
+    ds3231_gpio_clr(PWM_PIN);
+    ds3231_gpio_fsel(PWM_PIN, ds3231_GPIO_FSEL_INPT);
+    ds3231_close();
+    exit(0);
+}
+
+
+void setSigHandler ()
+{
+    int sigs[] = { SIGINT, SIGTERM, SIGQUIT, SIGHUP, SIGABRT },
+        num_sigs = sizeof(sigs) / sizeof(int);
+
+    struct sigaction sigact;
+    memset(&sigact, 0, sizeof(sigact));
+    sigact.sa_handler = sigHandler;
+    for (int i = 0; i < num_sigs; i++) {
+        if (sigaction(sigs[i], &sigact, NULL) == -1) {
+            fprintf(stderr, "sigaction(%d) fail:\n", sigs[i]);
+            perror(NULL);
+        }
+    }
+}
+
+
+int main (void)
+{
+    if (!DS3231_init()) {
+        fprintf(stderr, "Failed to initialize.\n");
+        return 1;
+    }
+
+    setSigHandler();
+
+    ds3231_pwm_set_clock(CLOCK_DIVISOR);
+    ds3231_pwm_set_mode(PWM_CHANNEL, 1, 1);
+    ds3231_pwm_set_range(PWM_CHANNEL, PWM_RANGE);
+    ds3231_gpio_fsel(PWM_PIN, PWM_ALT);
+    ds3231_pwm_set_data(PWM_CHANNEL, PWM_RANGE / 2);
+
+    while (1) sleep (60);
+
+    return 0;
+}
